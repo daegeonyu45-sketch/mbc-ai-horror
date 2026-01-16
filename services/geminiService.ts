@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { HorrorShortScript, Scene } from "../types";
 
-// 가이드라인에 따른 수동 Base64 디코딩 구현
+// Manual base64 decoding implementation following coding guidelines example
 function decode(base64: string) {
   const binaryString = atob(base64.replace(/\s/g, ''));
   const len = binaryString.length;
@@ -13,7 +13,7 @@ function decode(base64: string) {
   return bytes;
 }
 
-// Raw PCM 데이터를 표준 WAV 파일로 변환
+// Raw PCM to WAV conversion for standard browser playback
 function pcmToWav(pcmData: Uint8Array, sampleRate: number = 24000): Blob {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
@@ -43,22 +43,22 @@ function extractJson(text: string): string {
       return text.substring(start, end + 1);
     }
   } catch (e) {
-    console.error("JSON boundary extraction failed", e);
+    console.error("JSON extraction error", e);
   }
   return text;
 }
 
 export const generateHorrorScript = async (theme: string, duration: number): Promise<HorrorShortScript> => {
-  // 인스턴스 생성 시점을 호출 직전으로 이동하여 최신 API 키 보장
+  // Create instance right before API call to ensure latest key is used
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview', // 정교한 시나리오를 위해 Pro 모델 사용
-    contents: `당신은 전문 공포 미스터리 쇼츠 작가입니다. ${duration}초 분량의 세로형 영상 대본을 작성하세요.
+    model: 'gemini-3-pro-preview', // Complex reasoning for high-quality scripts
+    contents: `당신은 세계적인 공포 미스터리 쇼츠 작가입니다. ${duration}초 분량의 세로형 영상 대본을 작성하세요.
       주제: ${theme}. 
-      반드시 정확히 6개의 장면(scenes)으로 구성해야 합니다.
-      모든 필드는 한국어로 작성하되, imagePrompt만은 Veo 비디오 생성 AI를 위해 매우 구체적이고 예술적인 영어로 작성하세요.
-      imagePrompt에는 'cinematic horror movie', 'dark atmospheric shadows', 'hyper-realistic texture', 'eerie fog' 키워드를 포함하세요.`,
+      정확히 6개의 장면(scenes)으로 구성해야 합니다.
+      한국어로 작성하되, imagePrompt만은 Veo AI를 위해 매우 구체적이고 예술적인 영어로 작성하세요.
+      imagePrompt 필수 키워드: 'cinematic horror movie', 'dark atmospheric shadows', 'hyper-realistic texture', 'eerie fog', 'dramatic lighting'.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -92,8 +92,8 @@ export const generateHorrorScript = async (theme: string, duration: number): Pro
   try {
     return JSON.parse(extractJson(rawText));
   } catch (err) {
-    console.error("JSON Parsing Error:", err, rawText);
-    throw new Error("대본을 생성하지 못했습니다. 다시 시도해주세요.");
+    console.error("Script JSON Parse Fail:", err, rawText);
+    throw new Error("영매의 기록을 읽지 못했습니다. 다시 시도해 주세요.");
   }
 };
 
@@ -103,7 +103,7 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
   try {
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      prompt: `Cinematic horror footage: ${prompt}. Dark atmospheric lighting, hyper-realistic.`,
+      prompt: `Cinematic high-quality horror: ${prompt}. Slow motion, eerie shadows, dark atmospheric lighting, 1080p look.`,
       config: {
         numberOfVideos: 1,
         resolution: '720p',
@@ -117,13 +117,13 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) throw new Error("비디오 URI를 찾을 수 없습니다.");
+    if (!downloadLink) throw new Error("비디오 영혼을 소환하지 못했습니다.");
 
     const separator = downloadLink.includes('?') ? '&' : '?';
     const finalUrl = `${downloadLink}${separator}key=${process.env.API_KEY}`;
     
     const response = await fetch(finalUrl);
-    if (!response.ok) throw new Error(`비디오 파일 다운로드 실패: ${response.statusText}`);
+    if (!response.ok) throw new Error(`다운로드 실패: ${response.statusText}`);
     
     const arrayBuffer = await response.arrayBuffer();
     const videoBlob = new Blob([arrayBuffer], { type: 'video/mp4' });
@@ -140,19 +140,19 @@ export const generateSceneAudio = async (text: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `소름끼치고 낮은 공포 영화 나레이션 톤으로 읽어주세요: ${text}` }] }],
+      contents: [{ parts: [{ text: `저주받은 듯한 낮은 공포 나레이션 목소리로 천천히 낭독하세요: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Charon' },
+            prebuiltVoiceConfig: { voiceName: 'Charon' }, // Low sinister voice
           },
         },
       },
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("오디오 데이터가 유효하지 않습니다.");
+    if (!base64Audio) throw new Error("음성이 비어 있습니다.");
 
     const pcmData = decode(base64Audio);
     const audioBlob = pcmToWav(pcmData, 24000);
