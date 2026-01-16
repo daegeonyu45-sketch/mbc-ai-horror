@@ -22,7 +22,7 @@ function pcmToWav(pcmData: Uint8Array, sampleRate: number = 24000): Blob {
   view.setUint32(4, 36 + pcmData.length, true);
   view.setUint32(8, 0x57415645, false); // WAVE
   view.setUint32(12, 0x666d7420, false); // fmt 
-  view.setUint32(16, 16, true);
+  view.setUint16(16, 16, true);
   view.setUint16(20, 1, true); // PCM
   view.setUint16(22, 1, true); // Mono
   view.setUint32(24, sampleRate, true);
@@ -35,7 +35,6 @@ function pcmToWav(pcmData: Uint8Array, sampleRate: number = 24000): Blob {
   return new Blob([header, pcmData], { type: 'audio/wav' });
 }
 
-// JSON 추출 시 마크다운 코드 블록(```json)이 섞여 나오는 경우 방지
 function extractJson(text: string): string {
   try {
     const start = text.indexOf('{');
@@ -44,16 +43,17 @@ function extractJson(text: string): string {
       return text.substring(start, end + 1);
     }
   } catch (e) {
-    console.error("JSON boundary error", e);
+    console.error("JSON boundary extraction failed", e);
   }
   return text;
 }
 
 export const generateHorrorScript = async (theme: string, duration: number): Promise<HorrorShortScript> => {
+  // 인스턴스 생성 시점을 호출 직전으로 이동하여 최신 API 키 보장
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview', // 정교한 시나리오를 위해 Pro 모델 사용
     contents: `당신은 전문 공포 미스터리 쇼츠 작가입니다. ${duration}초 분량의 세로형 영상 대본을 작성하세요.
       주제: ${theme}. 
       반드시 정확히 6개의 장면(scenes)으로 구성해야 합니다.
@@ -93,7 +93,7 @@ export const generateHorrorScript = async (theme: string, duration: number): Pro
     return JSON.parse(extractJson(rawText));
   } catch (err) {
     console.error("JSON Parsing Error:", err, rawText);
-    throw new Error("대본 형식이 올바르지 않습니다.");
+    throw new Error("대본을 생성하지 못했습니다. 다시 시도해주세요.");
   }
 };
 
@@ -103,7 +103,7 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
   try {
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      prompt: `A high-quality cinematic horror scene: ${prompt}. Dark atmosphere, hyper-realistic, eerie shadows.`,
+      prompt: `Cinematic horror footage: ${prompt}. Dark atmospheric lighting, hyper-realistic.`,
       config: {
         numberOfVideos: 1,
         resolution: '720p',
@@ -119,11 +119,11 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
     if (!downloadLink) throw new Error("비디오 URI를 찾을 수 없습니다.");
 
-    // URL에 이미 파라미터가 있는지 확인하여 API 키 추가
     const separator = downloadLink.includes('?') ? '&' : '?';
-    const response = await fetch(`${downloadLink}${separator}key=${process.env.API_KEY}`);
+    const finalUrl = `${downloadLink}${separator}key=${process.env.API_KEY}`;
     
-    if (!response.ok) throw new Error(`비디오 다운로드 실패: ${response.statusText}`);
+    const response = await fetch(finalUrl);
+    if (!response.ok) throw new Error(`비디오 파일 다운로드 실패: ${response.statusText}`);
     
     const arrayBuffer = await response.arrayBuffer();
     const videoBlob = new Blob([arrayBuffer], { type: 'video/mp4' });
@@ -140,7 +140,7 @@ export const generateSceneAudio = async (text: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `공포스럽고 소름끼치는 낮은 목소리로 천천히 읽어주세요: ${text}` }] }],
+      contents: [{ parts: [{ text: `소름끼치고 낮은 공포 영화 나레이션 톤으로 읽어주세요: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -152,7 +152,7 @@ export const generateSceneAudio = async (text: string): Promise<string> => {
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("오디오 데이터가 비어있습니다.");
+    if (!base64Audio) throw new Error("오디오 데이터가 유효하지 않습니다.");
 
     const pcmData = decode(base64Audio);
     const audioBlob = pcmToWav(pcmData, 24000);

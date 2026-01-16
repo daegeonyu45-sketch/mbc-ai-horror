@@ -1,8 +1,5 @@
 {
   "name": "공포 쇼츠 대장간 (Horror Shorts Forge)",
   "description": "Gemini와 Veo를 이용해 공포 쇼츠 대본, 영상, 음성을 한 번에 생성합니다.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ]
+  "requestFramePermissions": []
 }
