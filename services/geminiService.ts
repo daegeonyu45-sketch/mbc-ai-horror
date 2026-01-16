@@ -2,7 +2,6 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { HorrorShortScript, Scene } from "../types";
 
-// Manual base64 decoding implementation following coding guidelines example
 function decode(base64: string) {
   const binaryString = atob(base64.replace(/\s/g, ''));
   const len = binaryString.length;
@@ -13,7 +12,6 @@ function decode(base64: string) {
   return bytes;
 }
 
-// Raw PCM to WAV conversion for standard browser playback
 function pcmToWav(pcmData: Uint8Array, sampleRate: number = 24000): Blob {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
@@ -43,21 +41,29 @@ function extractJson(text: string): string {
       return text.substring(start, end + 1);
     }
   } catch (e) {
-    console.error("JSON extraction error", e);
+    console.error("JSON 파싱 범위 추출 실패", e);
   }
   return text;
 }
 
+// 공통 API 인스턴스 생성 도우미
+const getAiInstance = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key가 설정되지 않았습니다. 브라우저에서 키 선택이 필요합니다.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
 export const generateHorrorScript = async (theme: string, duration: number): Promise<HorrorShortScript> => {
-  // Create instance right before API call to ensure latest key is used
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAiInstance();
   
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview', // Complex reasoning for high-quality scripts
+    model: 'gemini-3-pro-preview',
     contents: `당신은 세계적인 공포 미스터리 쇼츠 작가입니다. ${duration}초 분량의 세로형 영상 대본을 작성하세요.
       주제: ${theme}. 
       정확히 6개의 장면(scenes)으로 구성해야 합니다.
-      한국어로 작성하되, imagePrompt만은 Veo AI를 위해 매우 구체적이고 예술적인 영어로 작성하세요.
+      한국어로 작성하되, imagePrompt만은 Veo AI를 위해 매우 구체적인 영어로 작성하세요.
       imagePrompt 필수 키워드: 'cinematic horror movie', 'dark atmospheric shadows', 'hyper-realistic texture', 'eerie fog', 'dramatic lighting'.`,
     config: {
       responseMimeType: "application/json",
@@ -98,12 +104,12 @@ export const generateHorrorScript = async (theme: string, duration: number): Pro
 };
 
 export const generateSceneVideo = async (prompt: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAiInstance();
   
   try {
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      prompt: `Cinematic high-quality horror: ${prompt}. Slow motion, eerie shadows, dark atmospheric lighting, 1080p look.`,
+      prompt: `Cinematic horror shot: ${prompt}. Dark atmospheric lighting, high fidelity.`,
       config: {
         numberOfVideos: 1,
         resolution: '720p',
@@ -117,12 +123,11 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) throw new Error("비디오 영혼을 소환하지 못했습니다.");
+    if (!downloadLink) throw new Error("비디오 데이터를 찾을 수 없습니다.");
 
     const separator = downloadLink.includes('?') ? '&' : '?';
-    const finalUrl = `${downloadLink}${separator}key=${process.env.API_KEY}`;
+    const response = await fetch(`${downloadLink}${separator}key=${process.env.API_KEY}`);
     
-    const response = await fetch(finalUrl);
     if (!response.ok) throw new Error(`다운로드 실패: ${response.statusText}`);
     
     const arrayBuffer = await response.arrayBuffer();
@@ -135,24 +140,24 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
 };
 
 export const generateSceneAudio = async (text: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAiInstance();
   
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `저주받은 듯한 낮은 공포 나레이션 목소리로 천천히 낭독하세요: ${text}` }] }],
+      contents: [{ parts: [{ text: `소름끼치는 낮은 공포 영화 나레이션 목소리로 천천히 읽어주세요: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Charon' }, // Low sinister voice
+            prebuiltVoiceConfig: { voiceName: 'Charon' },
           },
         },
       },
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("음성이 비어 있습니다.");
+    if (!base64Audio) throw new Error("음성 데이터가 유효하지 않습니다.");
 
     const pcmData = decode(base64Audio);
     const audioBlob = pcmToWav(pcmData, 24000);
