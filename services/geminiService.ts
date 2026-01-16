@@ -48,8 +48,8 @@ function extractJson(text: string): string {
 
 const getAiInstance = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey.trim() === "" || apiKey === "undefined") {
-    throw new Error("API_KEY_NOT_SET");
+  if (!apiKey || apiKey === "" || apiKey === "undefined") {
+    throw new Error("API_KEY_MISSING");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -97,8 +97,7 @@ export const generateHorrorScript = async (theme: string, duration: number): Pro
   try {
     return JSON.parse(extractJson(rawText));
   } catch (err) {
-    console.error("Script JSON Parse Fail:", err, rawText);
-    throw new Error("영매의 기록을 읽지 못했습니다. 다시 시도해 주세요.");
+    throw new Error("대본을 파싱할 수 없습니다. 다시 시도해 주세요.");
   }
 };
 
@@ -108,7 +107,7 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
   try {
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      prompt: `Cinematic horror shot: ${prompt}. Dark atmospheric lighting, high fidelity.`,
+      prompt: `Horror masterpiece: ${prompt}. Cinematic lighting, 1080p look, hyper-realistic.`,
       config: {
         numberOfVideos: 1,
         resolution: '720p',
@@ -122,18 +121,14 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) throw new Error("비디오 데이터를 찾을 수 없습니다.");
+    if (!downloadLink) throw new Error("Video URI not found");
 
     const separator = downloadLink.includes('?') ? '&' : '?';
     const response = await fetch(`${downloadLink}${separator}key=${process.env.API_KEY}`);
-    
-    if (!response.ok) throw new Error(`다운로드 실패: ${response.statusText}`);
-    
     const arrayBuffer = await response.arrayBuffer();
-    const videoBlob = new Blob([arrayBuffer], { type: 'video/mp4' });
-    return URL.createObjectURL(videoBlob);
+    return URL.createObjectURL(new Blob([arrayBuffer], { type: 'video/mp4' }));
   } catch (error) {
-    console.error("Video Generation Error:", error);
+    console.error("Video Error:", error);
     throw error;
   }
 };
@@ -144,7 +139,7 @@ export const generateSceneAudio = async (text: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `소름끼치는 낮은 공포 영화 나레이션 목소리로 천천히 읽어주세요: ${text}` }] }],
+      contents: [{ parts: [{ text: `공포 영화 나레이션 톤으로 매우 천천히 속삭이듯 읽으세요: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -156,13 +151,12 @@ export const generateSceneAudio = async (text: string): Promise<string> => {
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("음성 데이터가 유효하지 않습니다.");
+    if (!base64Audio) throw new Error("Audio data empty");
 
     const pcmData = decode(base64Audio);
-    const audioBlob = pcmToWav(pcmData, 24000);
-    return URL.createObjectURL(audioBlob);
+    return URL.createObjectURL(pcmToWav(pcmData, 24000));
   } catch (error) {
-    console.error("Audio Generation Error:", error);
+    console.error("Audio Error:", error);
     throw error;
   }
 };
