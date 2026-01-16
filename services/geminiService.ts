@@ -13,46 +13,40 @@ function decode(base64: string) {
   return bytes;
 }
 
-// Raw PCM 데이터를 표준 WAV 파일로 변환 (브라우저 재생용)
-// Gemini TTS는 기본적으로 24000Hz, 16-bit Mono PCM을 반환함
+// Raw PCM 데이터를 표준 WAV 파일로 변환
 function pcmToWav(pcmData: Uint8Array, sampleRate: number = 24000): Blob {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
 
-  // RIFF identifier 'RIFF'
-  view.setUint32(0, 0x52494646, false);
-  // File length (header size - 8 + pcm size)
+  view.setUint32(0, 0x52494646, false); // RIFF
   view.setUint32(4, 36 + pcmData.length, true);
-  // RIFF type 'WAVE'
-  view.setUint32(8, 0x57415645, false);
-  // Format chunk identifier 'fmt '
-  view.setUint32(12, 0x666d7420, false);
-  // Format chunk length
+  view.setUint32(8, 0x57415645, false); // WAVE
+  view.setUint32(12, 0x666d7420, false); // fmt 
   view.setUint32(16, 16, true);
-  // Sample format (1 is PCM)
-  view.setUint16(20, 1, true);
-  // Channel count (1 is Mono)
-  view.setUint16(22, 1, true);
-  // Sample rate
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // Mono
   view.setUint32(24, sampleRate, true);
-  // Byte rate (sampleRate * channels * bitsPerSample / 8)
   view.setUint32(28, sampleRate * 2, true);
-  // Block align (channels * bitsPerSample / 8)
   view.setUint16(32, 2, true);
-  // Bits per sample
   view.setUint16(34, 16, true);
-  // Data chunk identifier 'data'
-  view.setUint32(36, 0x64617461, false);
-  // Data chunk length
+  view.setUint32(36, 0x64617461, false); // data
   view.setUint32(40, pcmData.length, true);
 
   return new Blob([header, pcmData], { type: 'audio/wav' });
 }
 
-// JSON 추출 헬퍼 (마크다운 블록 제거 등)
+// JSON 추출 시 마크다운 코드 블록(```json)이 섞여 나오는 경우 방지
 function extractJson(text: string): string {
-  const match = text.match(/\{[\s\S]*\}/);
-  return match ? match[0] : text;
+  try {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+      return text.substring(start, end + 1);
+    }
+  } catch (e) {
+    console.error("JSON boundary error", e);
+  }
+  return text;
 }
 
 export const generateHorrorScript = async (theme: string, duration: number): Promise<HorrorShortScript> => {
@@ -94,12 +88,12 @@ export const generateHorrorScript = async (theme: string, duration: number): Pro
     }
   });
 
-  const rawText = response.text;
+  const rawText = response.text || "";
   try {
     return JSON.parse(extractJson(rawText));
   } catch (err) {
     console.error("JSON Parsing Error:", err, rawText);
-    throw new Error("대본을 파싱하는 중 오류가 발생했습니다.");
+    throw new Error("대본 형식이 올바르지 않습니다.");
   }
 };
 
@@ -117,21 +111,19 @@ export const generateSceneVideo = async (prompt: string): Promise<string> => {
       }
     });
 
-    // 비디오 생성 완료까지 폴링
     while (!operation.done) {
       await new Promise(resolve => setTimeout(resolve, 10000));
       operation = await ai.operations.getVideosOperation({ operation: operation });
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) throw new Error("비디오 생성 결과가 유효하지 않습니다.");
+    if (!downloadLink) throw new Error("비디오 URI를 찾을 수 없습니다.");
 
-    // 가이드라인에 따라 API 키를 파라미터로 붙여서 다운로드
+    // URL에 이미 파라미터가 있는지 확인하여 API 키 추가
     const separator = downloadLink.includes('?') ? '&' : '?';
-    const finalUrl = `${downloadLink}${separator}key=${process.env.API_KEY}`;
+    const response = await fetch(`${downloadLink}${separator}key=${process.env.API_KEY}`);
     
-    const response = await fetch(finalUrl);
-    if (!response.ok) throw new Error(`비디오 파일 다운로드 실패: ${response.statusText}`);
+    if (!response.ok) throw new Error(`비디오 다운로드 실패: ${response.statusText}`);
     
     const arrayBuffer = await response.arrayBuffer();
     const videoBlob = new Blob([arrayBuffer], { type: 'video/mp4' });
@@ -160,7 +152,7 @@ export const generateSceneAudio = async (text: string): Promise<string> => {
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("TTS 오디오 데이터를 받지 못했습니다.");
+    if (!base64Audio) throw new Error("오디오 데이터가 비어있습니다.");
 
     const pcmData = decode(base64Audio);
     const audioBlob = pcmToWav(pcmData, 24000);
