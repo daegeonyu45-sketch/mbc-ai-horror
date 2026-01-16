@@ -41,16 +41,15 @@ function extractJson(text: string): string {
       return text.substring(start, end + 1);
     }
   } catch (e) {
-    console.error("JSON 파싱 범위 추출 실패", e);
+    console.error("JSON extraction error", e);
   }
   return text;
 }
 
-// 공통 API 인스턴스 생성 도우미
 const getAiInstance = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API Key가 설정되지 않았습니다. 브라우저에서 키 선택이 필요합니다.");
+  if (!apiKey || apiKey.trim() === "" || apiKey === "undefined") {
+    throw new Error("API_KEY_NOT_SET");
   }
   return new GoogleGenAI({ apiKey });
 };
